@@ -143,7 +143,7 @@ impl<W: Write> Compressor<W> {
         }
     }
 
-    fn write_token(&mut self, tok: &Token) -> Result<()> {
+    fn write_token(&mut self, _tok: &Token) -> Result<()> {
         Ok(()) 
     }
 
