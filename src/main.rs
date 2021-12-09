@@ -1,9 +1,6 @@
-use ringbuf::{RingBuffer, Consumer};
-use itertools::{Itertools, Chunks};
+use std::io::{Write, Result};
 
 const DICT_SIZE: usize = 0x80;
-const LA_SIZE: usize = 0x10;
-
 
 fn ascii<'a, I>(bytes: I) -> String
     where 
@@ -16,33 +13,63 @@ fn ascii<'a, I>(bytes: I) -> String
     String::from_utf8(ascii_bytes).unwrap()
 }
 
-fn print_consumer(consumer: Consumer<u8>) {
-    consumer.access(|a, b| {
-        let bytes = a.iter().chain(b);
-        bytes
-            .chunks(16)
-            .into_iter()
-            .map(ascii)
-            .for_each(|ascii_str| {
-                println!("{}", ascii_str);
-            })
-    });
+struct CompressorConfig {
+    dict_size: usize,
 }
 
-fn main() {
-    let dict_buf = RingBuffer::<u8>::new(DICT_SIZE);
-    let (_dict_producer, dict_consumer) = dict_buf.split();
+struct Compressor<W: Write> {
+    inner: W,
+    config: CompressorConfig,
 
-    let la_buf = RingBuffer::<u8>::new(LA_SIZE);
-    let (mut la_producer, la_consumer) = la_buf.split();
+    buffer: Box<[u8]>,
+    head: usize,
+}
 
-    for _ in 0..LA_SIZE {
-        la_producer.push(0).unwrap();
+impl<W: Write> Write for Compressor<W> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        Ok(buf.len())
     }
 
-    println!("Dict:");
-    print_consumer(dict_consumer);
+    fn flush(&mut self) -> Result<()> {
+        Ok(())
+    }
+}
 
-    println!("LA:");
-    print_consumer(la_consumer);
+impl<W: Write> Compressor<W> {
+    pub fn new(inner: W, config: CompressorConfig) -> Self {
+        let buffer = {
+            let mut buffer = Vec::with_capacity(config.dict_size);
+            unsafe {
+                buffer.set_len(config.dict_size);
+            }
+            buffer.into_boxed_slice()
+        };
+
+        Self {
+            inner,
+            config,
+            buffer,
+            head: 0,
+        }
+    }
+
+    fn finish(mut self) -> Result<W> {
+        self.flush()?;
+        Ok(self.inner)
+    }
+}
+
+fn main() -> Result<()> {
+    let to: Vec<u8> = Vec::new();
+
+    let mut comp = Compressor::new(to, CompressorConfig {
+        dict_size: DICT_SIZE,
+    });
+
+    write!(comp, "Hey, banana-ass! To banana or not to banana?")?;
+
+    let out = comp.finish()?;
+    println!("{}", ascii(out.iter()));
+
+    Ok(())
 }
