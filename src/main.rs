@@ -1,215 +1,54 @@
 use std::io::{Write, Result};
+use std::sync::mpsc;
+use lzrs::{Compressor, Config, ascii_buf};
 
 const DICT_SIZE: usize = 0x80;
 
-fn ascii_char(b: u8) -> String {
-    if (b >= 32 && b <= 126) {
-        format!("'{}'", b as char)
-    } else {
-        format!("0x{:02x}", b)
-    }
-}
+#[cfg(feature = "ui")]
+fn spawn_ui<W>(compressor: &mut Compressor<W>) -> Result<()> {
+    use std::{thread, io::{stdout, stdin}};
+    use termion::{raw::IntoRawMode, input::TermRead, screen::AlternateScreen, event::Key};
+    use tui::{backend::TermionBackend, Terminal};
 
-fn ascii_buf<'a, I>(bytes: I) -> String
-    where 
-        I: IntoIterator<Item = &'a u8>
-{
-    let ascii_bytes: Vec<u8> = bytes.into_iter().map(|b| match b {
-        b if *b >= 32 && *b <= 126 => *b,
-        _ => '.' as u8,
-    }).collect();
-    String::from_utf8(ascii_bytes).unwrap()
-}
+    let stdout = stdout().into_raw_mode()?;
+    let stdout = AlternateScreen::from(stdout);
+    let backend = TermionBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
 
-struct CompressorConfig {
-    dict_size: usize,
-}
+    terminal.clear()?;
 
-struct Compressor<W: Write> {
-    config: CompressorConfig,
+    let (tick_tx, tick_rx) = mpsc::channel();
+    compressor.set_tick_receiver(tick_rx);
 
-    inner: W,
-    write_buf: Vec<u8>,
-
-    dict: Vec<u8>,
-    head: usize,
-
-    map: [u32; 0x100],
-    chain: Vec<u32>,
-}
-
-#[derive(Copy, Clone, Eq, PartialEq)]
-enum Token {
-    Literal {
-        byte: u8,
-    },
-    Rep {
-        distance: usize,
-        length: usize,
-    }
-}
-
-impl std::fmt::Debug for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Literal { byte } => write!(f, "<LIT {}>", ascii_char(*byte)),
-            Self::Rep { distance, length } => write!(f, "<REP {}, {}>", distance, length),
-        }
-    }
-}
-
-impl<W: Write> Write for Compressor<W> {
-    fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        println!("Lookahead: [{}]", ascii_buf(buf));
-        println!("Dict: [{}{}]", ascii_buf(&self.dict[self.head..]), ascii_buf(&self.dict[..self.head]));
-
-        let (consumed, tok) = self.next_token(buf);
-        println!("{:?}", tok);
-
-        self.write_to_dictionary(&buf[..consumed]);
-        self.write_token(&tok)?;
-        Ok(consumed)
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        self.inner.write_all(&self.write_buf)?;
-        Ok(())
-    }
-}
-
-impl<W: Write> Compressor<W> {
-    pub fn new(inner: W, config: CompressorConfig) -> Self {
-        if config.dict_size > std::u32::MAX.try_into().unwrap() {
-            panic!("Dictionary must be less than or equal to {} bytes!", std::u32::MAX);
-        }
-
-        Self {
-            inner,
-            dict: Vec::with_capacity(config.dict_size),
-            head: 0,
-            map: [std::u32::MAX; 0x100],
-            chain: Vec::with_capacity(config.dict_size),
-            write_buf: vec![],
-            config,
-        }
-    }
-
-    pub fn finish(mut self) -> Result<W> {
-        self.flush()?;
-        Ok(self.inner)
-    }
-
-    fn next_token(&self, lookahead: &[u8]) -> (usize, Token) {
-        let mut best_match = (0, None);
-
-        let mut last = None;
-        while let Some(match_index) = self.next_match_index(last, lookahead) {
-            println!("Checking index: {}", match_index);
-
-            let len = self.match_len(match_index, lookahead);
-            println!("-> Length: {}", len);
-
-            if len > best_match.0 {
-                println!("-> Best match!");
-                best_match = (len, Some(match_index))
+    thread::spawn(move || {
+        let stdin = stdin();
+        for evt in stdin.keys() {
+            if let Ok(key) = evt {
+                match key {
+                    Key::Char('q') => break,
+                    _ => tick_tx.send(()).unwrap(),
+                }
+                terminal.draw(|_f| {}).unwrap();
             }
-
-            last = Some(match_index);
         }
+    });
 
-        if let (len, Some(index)) = best_match {
-            (len,
-            Token::Rep {
-                length: len,
-                distance: self.distance(index)
-            })
-        } else {
-            (1,
-            Token::Literal {
-                byte: lookahead[0],
-            })
-        }
-    }
-
-    fn write_token(&mut self, tok: &Token) -> Result<()> {
-        Ok(()) 
-    }
-
-    /// Returns the maximum length match from the dictionary, starting at the dictionary index
-    /// `at`.
-    fn match_len(&self, at: usize, lookahead: &[u8]) -> usize {
-        // The length of the match
-        let mut len = 0;
-
-        // This is the maximum that len can get before it wraps over onto the output
-        // When we read from the dict, we have to mod len with over_eln before getting the offset.
-        // That way, our read will repeat as appropriate.
-        let over_len = self.distance(at) + 1;
-
-        while self.dict[(at + (len % over_len)) % self.config.dict_size] == lookahead[len] {
-            len += 1;
-            println!("-> Match: {}", ascii_buf(&lookahead[..len]));
-        }
-
-        len
-    }
-
-    fn next_match_index(&self, last: Option<usize>, lookahead: &[u8]) -> Option<usize> {
-        let index = if let Some(last) = last {
-            self.chain[last] as usize
-        } else {
-            self.map[lookahead[0] as usize] as usize
-        };
-
-        if let Some(item) = self.dict.get(index) {
-            if *item == lookahead[0] {
-                Some(index)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Returns the index as the distance from the head, where 0 distance means the last item added
-    /// to the dictionary.
-    fn distance(&self, index: usize) -> usize {
-        if self.head > index {
-            self.head - index - 1
-        } else {
-            self.config.dict_size - index + self.head - 1
-        }
-    }
-
-    fn write_to_dictionary(&mut self, bytes: &[u8]) {
-        for b in bytes {
-            let first_match = self.map[*b as usize];
-            self.map[*b as usize] = self.head as u32;
-
-            if self.dict.len() < self.config.dict_size {
-                self.dict.push(*b);
-                self.chain.push(first_match);
-            } else {
-                self.dict[self.head] = *b;
-                self.chain[self.head] = first_match;
-            }
-
-            self.head = (self.head + 1) % self.config.dict_size;
-        }
-    }
+    Ok(())
 }
 
 fn main() -> Result<()> {
     let to: Vec<u8> = Vec::new();
 
-    let mut comp = Compressor::new(to, CompressorConfig {
+    let mut comp = Compressor::new(to, Config {
         dict_size: DICT_SIZE,
     });
 
-    write!(comp, "Hey, banana-ass! To banana or not to banana?")?;
+    #[cfg(feature = "ui")]
+    spawn_ui(&mut comp)?;
 
-    let out = comp.finish()?;
+    write!(comp, "Hey, banana-ass! To banana or not to banana?").unwrap();
+    let out = comp.finish().unwrap();
+
     println!("{}", ascii_buf(out.iter()));
 
     Ok(())
