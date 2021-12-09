@@ -3,10 +3,10 @@
 version = 3
 
 [[package]]
-name = "cache-padded"
-version = "1.1.1"
+name = "arraydeque"
+version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "631ae5198c9be5e753e5cc215e1bd73c2b466a3565173db433f52bb9d3e66dba"
+checksum = "f0ffd3d69bd89910509a5d31d1f1353f38ccffdd116dd0099bbd6627f7bd8ad8"
 
 [[package]]
 name = "either"
@@ -27,15 +27,6 @@ dependencies = [
 name = "lzrs"
 version = "0.1.0"
 dependencies = [
+ "arraydeque",
  "itertools",
- "ringbuf",
-]
-
-[[package]]
-name = "ringbuf"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c60f3923939c33e6c543ddbff14d0ee6a407fcd186d560be37282559616adf3"
-dependencies = [
- "cache-padded",
 ]
