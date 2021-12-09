@@ -1,9 +1,9 @@
 use std::{thread, io::{Result, stdout, stdin}, sync::mpsc};
 use termion::{raw::IntoRawMode, input::TermRead, screen::AlternateScreen, event::Key};
 use tui::{backend::TermionBackend, Terminal};
-use crate::{Compressor, debug::ui::{set_ui, UIDebugger}};
+use crate::debug::{set_instance, Instance, Command};
 
-pub fn spawn_ui<W>(_compressor: &mut Compressor<W>) -> Result<()> {
+pub fn spawn_ui() -> Result<()> {
     let stdout = stdout().into_raw_mode()?;
     let stdout = AlternateScreen::from(stdout);
     let backend = TermionBackend::new(stdout);
@@ -11,13 +11,13 @@ pub fn spawn_ui<W>(_compressor: &mut Compressor<W>) -> Result<()> {
 
     terminal.clear()?;
 
-    let (tick_tx, tick_rx) = mpsc::channel();
+    let (command_tx, command_rx) = mpsc::channel();
+    let (info_tx, _info_rx) = mpsc::channel();
 
-    set_ui(
-        UIDebugger {
-            tick: tick_rx
-        }
-    );
+    set_instance(Instance {
+        command_rx: Some(command_rx),
+        info_tx,
+    });
 
     thread::spawn(move || {
         let stdin = stdin();
@@ -25,7 +25,7 @@ pub fn spawn_ui<W>(_compressor: &mut Compressor<W>) -> Result<()> {
             if let Ok(key) = evt {
                 match key {
                     Key::Char('q') => break,
-                    _ => tick_tx.send(()).unwrap(),
+                    _ => command_tx.send(Command::Step).unwrap(),
                 }
                 terminal.draw(|_f| {}).unwrap();
             }

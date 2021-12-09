@@ -9,7 +9,7 @@ fn main() -> Result<()> {
     });
 
     #[cfg(feature = "ui")]
-    lzrs::ui::spawn_ui(&mut comp)?;
+    lzrs::ui::spawn_ui()?;
 
     write!(comp, "Hey, banana-ass! To banana or not to banana?").unwrap();
     let out = comp.finish().unwrap();
