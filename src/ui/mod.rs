@@ -1,7 +1,9 @@
 use std::{thread, io::{Result, stdout, stdin}, sync::mpsc};
 use termion::{raw::IntoRawMode, input::TermRead, screen::AlternateScreen, event::Key};
 use tui::{backend::TermionBackend, Terminal};
-use crate::debug::{set_instance, Instance, Command};
+use crate::debug::step;
+
+struct UI;
 
 pub fn spawn_ui() -> Result<()> {
     let stdout = stdout().into_raw_mode()?;
@@ -11,13 +13,7 @@ pub fn spawn_ui() -> Result<()> {
 
     terminal.clear()?;
 
-    let (command_tx, command_rx) = mpsc::channel();
-    let (info_tx, _info_rx) = mpsc::channel();
-
-    set_instance(Instance {
-        command_rx: Some(command_rx),
-        info_tx,
-    });
+    let (step_tx, step_rx) = mpsc::channel();
 
     thread::spawn(move || {
         let stdin = stdin();
@@ -25,7 +21,7 @@ pub fn spawn_ui() -> Result<()> {
             if let Ok(key) = evt {
                 match key {
                     Key::Char('q') => break,
-                    _ => command_tx.send(Command::Step).unwrap(),
+                    _ => step_tx.send(()).unwrap(),
                 }
                 terminal.draw(|_f| {}).unwrap();
             }

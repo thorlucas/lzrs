@@ -1,6 +1,6 @@
 use std::io::{Write, Result};
 
-use crate::{ascii_char, debug::tick, Config};
+use crate::{ascii_char, Config};
 
 pub struct Compressor<W> {
     dict_size: usize,
@@ -37,8 +37,6 @@ impl std::fmt::Debug for Token {
 
 impl<W: Write> Write for Compressor<W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        tick();
-
         let (consumed, tok) = self.next_token(buf);
 
         self.write_to_dictionary(&buf[..consumed]);
