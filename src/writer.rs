@@ -1,7 +1,10 @@
 use std::io::{Write, Result};
+use tracing::{instrument, debug, Value, debug_span, trace_span, field};
+use std::fmt::Debug;
 
 use crate::{ascii_char, Config};
 
+#[derive(Debug)]
 pub struct Compressor<W> {
     dict_size: usize,
 
@@ -15,7 +18,7 @@ pub struct Compressor<W> {
     chain: Vec<u32>,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Token {
     Literal {
         byte: u8,
@@ -26,18 +29,17 @@ pub enum Token {
     }
 }
 
-impl std::fmt::Debug for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Literal { byte } => write!(f, "<LIT {}>", ascii_char(*byte)),
-            Self::Rep { distance, length } => write!(f, "<REP {}, {}>", distance, length),
-        }
-    }
-}
-
-impl<W: Write> Write for Compressor<W> {
+impl<W: Write + Debug> Write for Compressor<W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
+        let span = trace_span!("write", "dict.ptr" = field::Empty, "dict.head" = field::Empty);
+        span.record("dict.ptr", &(self.dict.as_ptr() as u64));
+        span.record("dict.head", &(self.head as u32));
+
+        let _enter = span.enter();
+
+        debug!("Writing");
         let (consumed, tok) = self.next_token(buf);
+        debug!(consumed = consumed, "Produced a token.");
 
         self.write_to_dictionary(&buf[..consumed]);
         self.write_token(&tok)?;
@@ -50,7 +52,12 @@ impl<W: Write> Write for Compressor<W> {
     }
 }
 
-impl<W: Write> Compressor<W> {
+struct DebugBuffer {
+    ptr: usize,
+    len: usize,
+}
+
+impl<W: Write + Debug> Compressor<W> {
     pub fn new(inner: W, config: Config) -> Self {
         if config.dict_size > std::u32::MAX.try_into().unwrap() {
             panic!("Dictionary must be less than or equal to {} bytes!", std::u32::MAX);
@@ -85,6 +92,7 @@ impl<W: Write> Compressor<W> {
 
             last = Some(match_index);
         }
+
 
         if let (len, Some(index)) = best_match {
             (len,

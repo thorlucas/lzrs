@@ -1,7 +1,4 @@
-#[cfg(feature = "ui")]
-pub mod ui;
-
-mod debug;
+pub mod debug;
 mod writer;
 
 pub use writer::Compressor;
