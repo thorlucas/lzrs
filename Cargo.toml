@@ -1,26 +1,5 @@
-[package]
-name = "lzrs"
-version = "0.1.0"
-edition = "2021"
-default-run = "lzrs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[[bin]]
-name = "lzrs"
-
-[features]
-default = []
-debug = []
-step = ["debug"]
-ui = ["debug", "step"]
-
-[dependencies]
-arraydeque = "0.4"
-itertools = "0.10"
-termion = "1.5"
-tui = "0.16"
-anyhow =  "1"
-lazy_static = "1.4"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+[workspace]
+members = [
+	"lzrs-lib",
+	"lzrs",
+]

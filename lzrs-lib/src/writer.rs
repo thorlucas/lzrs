@@ -1,11 +1,11 @@
 use std::io::{Write, Result};
-use tracing::{instrument, debug, Value, debug_span, trace_span, field};
+use tracing::{debug, trace_span, field};
 use std::fmt::Debug;
 
-use crate::{ascii_char, Config};
+use crate::{Config, Token};
 
 #[derive(Debug)]
-pub struct Compressor<W> {
+pub struct Writer<W> {
     dict_size: usize,
 
     inner: W,
@@ -18,18 +18,7 @@ pub struct Compressor<W> {
     chain: Vec<u32>,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Token {
-    Literal {
-        byte: u8,
-    },
-    Rep {
-        distance: usize,
-        length: usize,
-    }
-}
-
-impl<W: Write + Debug> Write for Compressor<W> {
+impl<W: Write + Debug> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
         let span = trace_span!("write", "dict.ptr" = field::Empty, "dict.head" = field::Empty);
         span.record("dict.ptr", &(self.dict.as_ptr() as u64));
@@ -52,12 +41,7 @@ impl<W: Write + Debug> Write for Compressor<W> {
     }
 }
 
-struct DebugBuffer {
-    ptr: usize,
-    len: usize,
-}
-
-impl<W: Write + Debug> Compressor<W> {
+impl<W: Write + Debug> Writer<W> {
     pub fn new(inner: W, config: Config) -> Self {
         if config.dict_size > std::u32::MAX.try_into().unwrap() {
             panic!("Dictionary must be less than or equal to {} bytes!", std::u32::MAX);
