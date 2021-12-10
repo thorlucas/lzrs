@@ -1,8 +1,7 @@
-use std::sync::mpsc::Receiver;
-
-use tracing::{Subscriber, span, subscriber::Interest};
+use tracing::{Subscriber, span};
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
+#[derive(Copy, Clone)]
 pub struct UILayer;
 
 impl UILayer {
@@ -19,7 +18,7 @@ impl<S> Layer<S> for UILayer
         S: Subscriber + for<'a> LookupSpan<'a>
 {
     fn on_enter(&self, id: &span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
-        if let Some(span) = ctx.span(id) {
+        if let Some(_span) = ctx.span(id) {
             //println!("TARGET: {} - UI got span {}", span.metadata().target(), span.name());
         }
     }

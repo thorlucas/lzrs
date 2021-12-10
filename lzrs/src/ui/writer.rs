@@ -1,13 +1,13 @@
 use std::{io::{Write, Read}, sync::{Mutex, Arc}};
 
-use tracing_subscriber::fmt::{MakeWriter, writer::MakeWriterExt};
+use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Clone)]
-pub struct AppWriter {
+pub struct UIWriter {
     pub buf: Arc<Mutex<Vec<u8>>>,
 }
 
-impl AppWriter {
+impl UIWriter {
     pub fn new() -> Self {
         Self {
             buf: Arc::new(Mutex::new(vec![])),
@@ -19,7 +19,7 @@ impl AppWriter {
     }
 }
 
-impl Write for AppWriter {
+impl Write for UIWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         //println!("{}", String::from_utf8(buf.to_vec()).unwrap());
         //println!("Writing {} bytes into", buf.len());
@@ -32,14 +32,13 @@ impl Write for AppWriter {
     }
 }
 
-impl Read for AppWriter {
+impl Read for UIWriter {
     fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
         buf.write(&self.buf.lock().unwrap())
     }
 }
 
-
-impl MakeWriter<'_> for AppWriter {
+impl MakeWriter<'_> for UIWriter {
     type Writer = Self;
 
     fn make_writer(&self) -> Self::Writer {

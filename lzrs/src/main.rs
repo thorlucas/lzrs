@@ -1,7 +1,6 @@
 use std::io::{Write, Result};
 use lzrs_lib::prelude::{Writer, Config};
-use tracing::{debug, info, Level};
-use tracing_subscriber::EnvFilter;
+use tracing::Level;
 
 fn main() -> Result<()> {
     tracing_subscriber::fmt()

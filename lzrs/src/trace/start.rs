@@ -1,34 +1,18 @@
-pub mod step;
-pub mod ui;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{fmt::MakeWriter, filter::filter_fn};
+use tracing_subscriber::prelude::*;
 
-use std::{sync::{mpsc::{Receiver}, Arc, Mutex}, io::Write};
+use super::Trace;
 
-use tracing::Level;
-use tracing_subscriber::{filter::filter_fn, Layer, prelude::*, fmt::MakeWriter};
-pub use ui::UILayer;
-pub use step::StepLayer;
-
-use crate::ui::AppWriter;
-
-pub struct Config {
-    pub writer: AppWriter,
-}
-
-
-pub fn start(config: Config) { 
-    //let (make_writer, _guard) = tracing_appender::non_blocking(
-        //config.writer
-    //);
-
-    let ui_layer = UILayer::new();
-    let step_layer = StepLayer::new();
+pub fn start<W>(trace: &Trace<W>)
+    where
+        W: for<'w> MakeWriter<'w> + 'static + Send + Sync + Clone
+{ 
     let fmt_layer = tracing_subscriber::fmt::layer()
-        //.compact()
-        //.pretty()    
         .with_ansi(true)
-        .with_writer(config.writer);
+        .with_writer(trace.writer.clone());
         
-    tracing_subscriber::registry()
+    let sub = tracing_subscriber::registry()
         .with(
             fmt_layer
             .with_filter(filter_fn(|meta| {
@@ -40,16 +24,18 @@ pub fn start(config: Config) {
             }))
         )
         .with(
-            ui_layer
+            trace.ui_layer.clone()
             .with_filter(filter_fn(|meta| {
                 !meta.target().starts_with("lzrs::")
             }))
         )
         .with(
-            step_layer
+            trace.step_layer.clone()
             .with_filter(filter_fn(|meta| {
                 !meta.target().starts_with("lzrs::")
             }))
         )
         .init();
+
+    sub
 }

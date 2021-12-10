@@ -1,6 +1,5 @@
-use std::{io::{Result, Write}, intrinsics::write_bytes};
 use ansi_to_tui::ansi_to_text;
-use tracing::info;
+use std::io::Write;
 use tui::{
     backend::Backend,
     layout::{Constraint, Direction, Layout},
@@ -8,7 +7,7 @@ use tui::{
     Frame,
 };
 
-use super::App;
+use crate::app::App;
 
 pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let chunks = Layout::default()
@@ -20,19 +19,19 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     let log_chunk = chunks[1];
 
     let text = {
-        app.log_buffer.flush().unwrap();
-        let buf: Vec<u8> = app.log_buffer.buf.lock().unwrap().drain(..).collect();
+        app.ui.log_buffer.flush().unwrap();
+        let buf: Vec<u8> = app.ui.log_buffer.buf.lock().unwrap().drain(..).collect();
         ansi_to_text(buf).unwrap()
     };
-    app.log.extend(text);
+    app.ui.log.extend(text);
 
     let chunk_height = (log_chunk.height as usize) - 2;
-    let lines = app.log.lines.len();
+    let lines = app.ui.log.lines.len();
     if lines > chunk_height {
-        app.log.lines = app.log.lines[(lines - chunk_height)..].to_vec();
+        app.ui.log.lines = app.ui.log.lines[(lines - chunk_height)..].to_vec();
     }
 
-    let log_widget = Paragraph::new(app.log.clone())
+    let log_widget = Paragraph::new(app.ui.log.clone())
         .block(Block::default().title("Log").borders(Borders::ALL))
         .wrap(tui::widgets::Wrap { trim: false });
 
