@@ -11,7 +11,7 @@ where
 {
     let event_rx = start_event_loop()?; 
     let mut terminal = ui::start()?;
-    trace::start(&app.trace);
+    trace::start(&mut app.trace);
 
     init(); 
 
@@ -20,7 +20,7 @@ where
 
         match event_rx.recv().unwrap() {
             Key::Char('q') => app.should_quit = true,
-            //Key::Char(' ') => app.step_tx.send(()).unwrap(),
+            Key::Char(' ') => app.step.send(()).unwrap(),
             _ => (),
         }
 

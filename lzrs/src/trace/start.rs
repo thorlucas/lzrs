@@ -4,7 +4,7 @@ use tracing_subscriber::prelude::*;
 
 use super::Trace;
 
-pub fn start<W>(trace: &Trace<W>)
+pub fn start<W>(trace: &mut Trace<W>)
     where
         W: for<'w> MakeWriter<'w> + 'static + Send + Sync + Clone
 { 
@@ -24,13 +24,13 @@ pub fn start<W>(trace: &Trace<W>)
             }))
         )
         .with(
-            trace.ui_layer.clone()
+            trace.ui_layer.take().unwrap()
             .with_filter(filter_fn(|meta| {
                 !meta.target().starts_with("lzrs::")
             }))
         )
         .with(
-            trace.step_layer.clone()
+            trace.step_layer.take().unwrap()
             .with_filter(filter_fn(|meta| {
                 !meta.target().starts_with("lzrs::")
             }))
