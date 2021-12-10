@@ -1,28 +1,32 @@
 use std::thread;
 use std::io::Result;
 
-use lzrs::{layer::{self, make_subscriber}, ui::{start, self}};
-use tracing_subscriber::util::SubscriberInitExt;
+use lzrs::{layer, ui};
+use tracing::info;
+
 
 fn main() -> Result<()> {
-    start(ui::Config {
+    let app = ui::App::new();
 
-    }, |step_rx| {
-        use lzrs_lib::prelude::{Writer, Config};
+    layer::start(
+        layer::Config {
+            writer: app.log_buffer.clone(),
+        }
+    );
+
+    thread::spawn(move || {
+        use lzrs_lib::{Writer, Config};
         use std::io::Write;
 
-        println!("making subscriber");
-        let subscriber = make_subscriber(layer::Config { step_rx });
-        subscriber.init();
+        let to: Vec<u8> = Vec::new();
+        let mut comp = Writer::new(to, Config { dict_size: 0x80 });
 
-        thread::spawn(move || {
-            println!("making work thread");
-            let to: Vec<u8> = Vec::new();
-            let mut comp = Writer::new(to, Config { dict_size: 0x80 });
+        info!("Hello?");
 
-            write!(comp, "Hey, banana-ass! To banana or not to banana?").unwrap();
-        });
-    })?;
+        write!(comp, "Hey, banana-ass! To banana or not to banana?").unwrap();
+    });
+
+    ui::start(app)?;
 
     Ok(())
 }

@@ -16,4 +16,6 @@ lzrs-lib = { path = "../lzrs-lib" }
 termion = "1.5.6"
 tracing = "0.1.29"
 tracing-subscriber = { version = "0.3", features = [ "env-filter", "registry" ] }
+tracing-appender = "0.2"
 tui = "0.16.0"
+ansi-to-tui = "0.4.1"

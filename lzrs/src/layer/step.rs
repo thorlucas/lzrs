@@ -1,17 +1,13 @@
-use std::sync::{mpsc::Receiver, Mutex};
+use std::sync::{mpsc::Receiver, Mutex, Arc};
 
 use tracing::{Subscriber, span, subscriber::Interest};
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
-pub struct StepLayer {
-    step_rx: Mutex<Option<Receiver<()>>>,
-}
+pub struct StepLayer {}
 
 impl StepLayer {
-    pub fn new(step_rx: Option<Receiver<()>>) -> Self {
-       Self {
-            step_rx: Mutex::new(step_rx),
-       }
+    pub fn new() -> Self {
+        Self {}
     }
 }
 
@@ -21,11 +17,9 @@ impl<S> Layer<S> for StepLayer
 {
     fn on_enter(&self, id: &span::Id, ctx: tracing_subscriber::layer::Context<'_, S>) {
         if let Some(span) = ctx.span(id) {
-            println!("Blocking on span {}", span.name());
-            if let Some(rx) = &*self.step_rx.lock().unwrap() {
-                rx.recv().unwrap();
-            }
-            println!("Unblocking");
+            //println!("Blocking on span {}", span.name());
+            //self.step_rx.recv().unwrap();
+            //println!("Unblocking");
         }
     }
 }

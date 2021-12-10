@@ -1,4 +1,5 @@
-pub mod writer;
+mod writer;
+pub use writer::Writer;
 
 pub struct Config {
     pub dict_size: usize,
