@@ -20,9 +20,10 @@ pub struct Writer<W> {
 
 impl<W: Write + Debug> Write for Writer<W> {
     fn write(&mut self, buf: &[u8]) -> Result<usize> {
-        let span = trace_span!("write", "dict.ptr" = field::Empty, "dict.head" = field::Empty);
+        let span = trace_span!("write", "dict.ptr" = field::Empty, "dict.head" = field::Empty, "dict.len" = field::Empty);
         span.record("dict.ptr", &(self.dict.as_ptr() as u64));
         span.record("dict.head", &(self.head as u32));
+        span.record("dict.len", &(self.dict.len() as u32));
 
         let _enter = span.enter();
 
