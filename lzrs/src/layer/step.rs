@@ -1,13 +1,13 @@
 use std::sync::{mpsc::Receiver, Mutex};
 
-use tracing::{Subscriber, span, Level};
+use tracing::{Subscriber, span, subscriber::Interest};
 use tracing_subscriber::{registry::LookupSpan, Layer};
 
-pub struct StepSubscriber {
+pub struct StepLayer {
     step_rx: Mutex<Option<Receiver<()>>>,
 }
 
-impl StepSubscriber {
+impl StepLayer {
     pub fn new(step_rx: Option<Receiver<()>>) -> Self {
        Self {
             step_rx: Mutex::new(step_rx),
@@ -15,7 +15,7 @@ impl StepSubscriber {
     }
 }
 
-impl<S> Layer<S> for StepSubscriber 
+impl<S> Layer<S> for StepLayer 
     where
         S: Subscriber + for<'a> LookupSpan<'a>
 {
