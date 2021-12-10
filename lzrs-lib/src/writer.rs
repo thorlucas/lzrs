@@ -1,5 +1,5 @@
 use std::io::{Write, Result};
-use tracing::{debug, trace_span, field};
+use tracing::{debug, trace_span, field, trace};
 use std::fmt::Debug;
 
 use crate::{Config, Token};
@@ -26,9 +26,9 @@ impl<W: Write + Debug> Write for Writer<W> {
 
         let _enter = span.enter();
 
-        debug!("Writing");
+        trace!("Writing");
         let (consumed, tok) = self.next_token(buf);
-        debug!(consumed = consumed, "Produced a token.");
+        trace!(consumed = consumed, "Produced a token.");
 
         self.write_to_dictionary(&buf[..consumed]);
         self.write_token(&tok)?;

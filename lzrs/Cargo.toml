@@ -3,7 +3,7 @@ name = "lzrs"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
 
 [[bin]]
 name = "ui"
@@ -12,3 +12,5 @@ path = "src/bin/ui.rs"
 
 [dependencies]
 lzrs-lib = { path = "../lzrs-lib" }
+tracing = "0.1.29"
+tracing-subscriber = { version = "0.3", features = [ "env-filter" ] }

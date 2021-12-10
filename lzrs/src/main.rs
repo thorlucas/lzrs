@@ -1,7 +1,13 @@
 use std::io::{Write, Result};
 use lzrs_lib::prelude::{Writer, Config};
+use tracing::{debug, info, Level};
+use tracing_subscriber::EnvFilter;
 
 fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_max_level(Level::TRACE)
+        .init();
+
     let to: Vec<u8> = Vec::new();
 
     let mut comp = Writer::new(to, Config {
