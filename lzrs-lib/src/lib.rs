@@ -17,4 +17,5 @@ pub enum Token {
 
 pub mod prelude {
     pub use super::writer::Writer;
+    pub use super::Config;
 }
