@@ -1,12 +1,19 @@
+use std::sync::{Mutex, mpsc::{Receiver, Sender}};
+
 use tracing::{Subscriber, span, info, subscriber::Interest, Metadata, debug, field::{Visit, Field}};
 use tracing_subscriber::{registry::LookupSpan, Layer, prelude::*};
 
-#[derive(Copy, Clone)]
-pub struct UILayer;
+use crate::app::Event;
+
+pub struct UILayer {
+    pub(super) tx: Mutex<Option<Sender<Event>>>,
+}
 
 impl UILayer {
     pub fn new() -> Self {
-       Self
+       Self {
+            tx: Mutex::new(None),
+       }
     }
 }
 
@@ -58,6 +65,14 @@ impl<S> Layer<S> for UILayer
                 let b = &(v.0)[lower..upper];
                 let s = unsafe { std::str::from_utf8_unchecked(b) };
                 info!(dict.ptr = s, dict.len = v.0.len(), dict.head = v.1, "Finished dictionary buffer!");
+
+                if let Some(tx) = &mut *self.tx.lock().unwrap() {
+                    tx.send(Event::LoadDictBuffer {
+                        buf: v.0,
+                        head: v.1,
+                    }).unwrap();
+                }
+
                 span.extensions_mut().replace(v);
             } else {
                 span.extensions_mut().replace(v);

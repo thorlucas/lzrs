@@ -1,5 +1,7 @@
 use std::sync::mpsc::Sender;
 use tracing_subscriber::fmt::MakeWriter;
+use crate::app::Event;
+
 use self::{ui::UILayer, step::StepLayer};
 
 mod step;
@@ -32,5 +34,11 @@ impl<W> Trace<W>
         } else {
             None
         }
+    }
+
+    pub fn subscribe_event_tx(&mut self, tx: Sender<Event>) {
+        if let Some(ui_layer) = &mut self.ui_layer {
+            *ui_layer.tx.lock().unwrap() = Some(tx);
+        }       
     }
 }
