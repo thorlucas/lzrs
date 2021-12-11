@@ -1,9 +1,8 @@
 use std::{cmp, io};
 
-/// The main dictionary structure which is used to perform searches.
-///
-/// The searches are performed on the lookahead bytes which have already been loaded into the
-/// dictionary.
+/// A dictionary which is used for conducting searches. A lookahead can be loaded into the
+/// dictionary, and then the lengths of matches at specific offsets can be queried. It can also
+/// retrieve matches given an offset.
 pub struct Dictionary {
     // Size of the rolling dictionary of already encoded data.
     //
@@ -20,9 +19,6 @@ pub struct Dictionary {
     // in a match can come from the lookahead.
     la_cap: usize,
 
-    // The mask used on dictionary indexes for fast modulus operation.
-    mask: usize,
-
     // The buffer containing both the bytes already seen and the bytes in the lookahead.
     //
     // The extra `MAX_MATCH_LEN-1` bytes at the end ensure that when doing matching, we can
@@ -35,7 +31,8 @@ pub struct Dictionary {
     buf: Box<[u8]>,
 
     // The current head position, behind which `dict_size` bytes have already been loaded and are
-    // thus valid for searching, and in front of which `self.la_size` bytes are matched against.
+    // thus valid for searching, and in front of which (inclusive) `self.la_size` bytes are matched
+    // against.
     //
     // This should always be smaller than `self.capacity`. In order to efficiently wrap the head
     // around, we can use `head &= self.mask` since the `self.capacity` is a power of two.
@@ -58,14 +55,14 @@ pub struct Dictionary {
 /// Implements [`std::io::Write`] for writing into the lookahead buffer.
 impl Dictionary {
     /// Creates a new empty dictionary with a dictionary capacity of `dict_cap` and a lookahead
-    /// buffer capacity of `la_cap`. The dictionary capacity *must* be a power of two.
+    /// buffer capacity of `la_cap`. The dictionary capacity *must* be a power of two. The
+    /// dictionary will be capable of making matches of length *up to* `la_cap+1`.
     pub fn new(dict_cap: usize, la_cap: usize) -> Self {
-        assert!((dict_cap-1) & dict_cap == 0);
+        assert!((dict_cap-1) & dict_cap == 0 && dict_cap != 0, "Dictionary sizes that are not powers of two are not supported!");
 
         Self {
             dict_cap,
             la_cap,
-            mask: dict_cap - 1,
             buf: {
                 let mut v = Vec::with_capacity(dict_cap + la_cap);
                 unsafe {
@@ -79,17 +76,42 @@ impl Dictionary {
         }
     }
 
-    // Copies `len` bytes into the buffer at position `pos`, ensuring that the mirrored portion is
-    // preserved. Does not update the head position.
+    /// Returns the index mod the dictionary size.
+    #[inline(always)]
+    fn wrap(&self, index: usize) -> usize {
+        index & (self.dict_cap - 1)
+    }
+ 
+    /// Returns the index mod the dictionary size, where negative numbers wrap around the other
+    /// way.
+    #[inline(always)]
+    fn wrap_signed(&self, index: isize) -> usize {
+        self.wrap(index as usize)
+    }
+
+    /// Substracts the `value` from the `index`, and returns the wrapped index.
+    #[inline(always)]
+    fn wrap_sub(&self, index: usize, value: usize) -> usize {
+        self.wrap(index.wrapping_sub(value))
+    }
+
+    /// Copies `len` bytes into the buffer at position `pos`, ensuring that the mirrored portion is
+    /// preserved. Does not update the head position.
     fn wrapped_copy(&mut self, buf: &[u8], mut pos: usize, len: usize) {
-        pos = pos & self.mask;
+        pos = self.wrap(pos);
         for &c in &buf[..len] {
             self.buf[pos] = c;
             if pos < self.la_cap {
                 self.buf[pos + self.dict_cap] = c;
             }
-            pos = (pos + 1) & self.mask;
+            pos = self.wrap(pos + 1);
         }
+    }
+
+    /// Clears the lookahead buffer.
+    #[inline]
+    pub fn clear_lookahead(&mut self) {
+        self.la_size = 0;
     }
 
     /// Attempts to load all of the bytes in `buf` into the lookahead buffer. Returns the number of
@@ -113,19 +135,19 @@ impl Dictionary {
     /// If the buffer size is greater than the dictionary's capacity, it will only keep the last
     /// bytes.
     pub fn add_to_dictionary(&mut self, buf: &[u8]) {
-        self.la_size = 0;
+        self.clear_lookahead();
 
         self.wrapped_copy(buf, self.head, buf.len());
 
         self.dict_size = cmp::min(self.dict_size + buf.len(), self.dict_cap);
-        self.head = (self.head + buf.len()) & self.mask;
+        self.head = self.wrap(self.head + buf.len());
     }
 
     /// Moves `n` bytes from the lookahead buffer into the dictionary.
     pub fn commit_lookahead_bytes(&mut self, n: usize) {
         // TODO: Update hash chain
         assert!(n <= self.la_size);
-        self.head = (self.head + n) & self.mask;
+        self.head = self.wrap(self.head + n);
         self.dict_size = self.dict_size + n;
         self.la_size -= n;
     }
@@ -134,7 +156,7 @@ impl Dictionary {
     ///
     /// The concatenation of both slices would represent the whole dictionary from tail to head.
     pub fn dictionary(&self) -> (&[u8], &[u8]) {
-        let tail = self.head.wrapping_sub(self.dict_size) & self.mask;
+        let tail = self.wrap_sub(self.head, self.dict_size);
         if tail > self.head {
             (&self.buf[tail..self.dict_cap], &self.buf[0..self.head])
         } else {
@@ -145,6 +167,55 @@ impl Dictionary {
     /// Returns the slice corresponding to the valid lookahead buffer.
     pub fn lookahead(&self) -> &[u8] {
         &self.buf[self.head..self.head+self.la_size]
+    }
+
+    /// Reads 8 bytes from the dictionary at index `pos` and casts it into a `u64` in little
+    /// endian.
+    #[inline]
+    fn read_unaligned_u64(&self, pos: usize) -> u64 {
+        let bytes: [u8; 8] = self.buf[pos..pos+8].try_into().unwrap();
+        u64::from_le_bytes(bytes)
+    }
+
+    /// Returns the length of the longest match against the stored lookahead at `distance+1` bytes
+    /// behind the head, up to a maximum match length of the number of bytes currently loaded into
+    /// the lookahead buffer.
+    ///
+    /// **Note** that a distance of zero means the last byte added to the dictionary.
+    pub fn match_length(&self, distance: usize) -> usize {
+        assert!(distance < self.dict_size, "distance {} out of bounds (dictionary size {})", distance, self.dict_size);
+
+        if self.la_size == 0 {
+            return 0;
+        }
+
+        let pos = self.wrap_sub(self.head, distance + 1);
+
+        let mut len = 0;
+        let max_len = self.la_size;
+        
+        // Match 8 bytes at a time until there is less than 8 bytes remaining to the maximum.
+        while max_len - len >= 8 {
+            let dict_val = self.read_unaligned_u64(pos + len);
+            let la_val = self.read_unaligned_u64(self.head + len);
+
+            if dict_val == la_val {
+                len += 8;
+            } else {
+                break;
+            }
+        }
+
+        // Match one byte at a time
+        while len < max_len {
+            if self.buf[pos + len] == self.buf[self.head + len] {
+                len +=1;
+            } else {
+                break;
+            }
+        }
+
+        len
     }
 }
 
@@ -262,5 +333,49 @@ mod test {
         dict.add_to_lookahead(b"abcd");
 
         assert_eq!(b"abcd", dict.lookahead());
+    }
+
+    #[test]
+    fn test_match_length() {
+        let mut dict = dict!(8, 4);
+        dict.add_to_dictionary(b"abcd");
+
+        assert_eq!(0, dict.match_length(0));
+        assert_eq!(0, dict.match_length(2));
+
+        dict.add_to_lookahead(b"abcd");
+        assert_eq!(4, dict.match_length(3));
+
+        dict.clear_lookahead();
+        dict.add_to_lookahead(b"bc");
+        assert_eq!(2, dict.match_length(2));
+
+        // Test that unaligned 8 byte reads work
+        let mut dict = dict!(32, 16);
+        dict.add_to_dictionary(b"--1234567+1234--");
+        dict.add_to_lookahead(b"1234567+1234567+");
+        assert_eq!(12, dict.match_length(13));
+
+        dict.clear_lookahead();
+        dict.add_to_lookahead(b"1234567+12");
+        assert_eq!(10, dict.match_length(13));
+    }
+
+    #[test]
+    fn test_match_length_over() { 
+        let mut dict = dict!(8, 4);
+        dict.add_to_dictionary(b"ban");
+        dict.add_to_lookahead(b"ana");
+        assert_eq!(3, dict.match_length(1));
+
+        let mut dict = dict!(16, 12);
+        dict.add_to_dictionary(b"bad+");
+        dict.add_to_lookahead(b"ad+ad+ad+ad");
+        assert_eq!(11, dict.match_length(2));
+
+        let mut dict = dict!(8, 4);
+        dict.add_to_dictionary(b"abcd");
+        dict.add_to_lookahead(b"dddd");
+        assert_eq!(4, dict.match_length(0));
     }
 }
