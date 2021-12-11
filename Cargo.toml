@@ -2,4 +2,5 @@
 members = [
 	"lzrs-lib",
 	"lzrs",
+	"lzrs2",
 ]
