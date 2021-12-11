@@ -98,7 +98,6 @@ impl Dictionary {
     /// Copies `len` bytes into the buffer at position `pos`, ensuring that the mirrored portion is
     /// preserved. Does not update the head position.
     fn wrapped_copy(&mut self, buf: &[u8], mut pos: usize, len: usize) {
-        pos = self.wrap(pos);
         for &c in &buf[..len] {
             self.buf[pos] = c;
             if pos < self.la_cap {
@@ -107,6 +106,21 @@ impl Dictionary {
             pos = self.wrap(pos + 1);
         }
     }
+
+    /// Copies `len` bytes into the buffer at position `pos` from itself, starting at position
+    /// `from`.
+    fn wrapped_copy_self(&mut self, mut from: usize, mut pos: usize, len: usize) {
+        for _ in 0..len {
+            let c = self.buf[from];
+            self.buf[pos] = c;
+            if pos < self.la_cap {
+                self.buf[pos + self.dict_cap] = c;
+            }
+            pos = self.wrap(pos + 1);
+            from = self.wrap(from + 1);
+        }
+    }
+
 
     /// Clears the lookahead buffer.
     #[inline]
@@ -143,13 +157,21 @@ impl Dictionary {
         self.head = self.wrap(self.head + buf.len());
     }
 
-    /// Moves `n` bytes from the lookahead buffer into the dictionary.
-    pub fn commit_lookahead_bytes(&mut self, n: usize) {
+    /// Moves `n` bytes from the lookahead buffer into the dictionary, returning a slice to the
+    /// committed bytes.
+    pub fn commit_lookahead_bytes(&mut self, n: usize) -> &[u8] {
         // TODO: Update hash chain
         assert!(n <= self.la_size);
+
+        // Since there will always be at least `la_cap` bytes mirrored at the end of the buffer,
+        // and since `n` will always be smaller than `la_cap`, this will always be fine.
+        let bytes = &self.buf[self.head..self.head+n];
+
         self.head = self.wrap(self.head + n);
         self.dict_size = self.dict_size + n;
         self.la_size -= n;
+
+        bytes
     }
 
     /// Returns two slices corresponding to the current valid dictionary buffer.
@@ -217,6 +239,36 @@ impl Dictionary {
 
         len
     }
+
+    /// Returns the `length` match at `distance` from the head.
+    ///
+    /// This will load bytes into the lookahead as it does so.
+    pub fn load_match_into_lookahead(&mut self, distance: usize, length: usize) -> &[u8] {
+        assert!(distance < self.dict_size);
+        assert!(length+self.la_size <= self.la_cap);
+
+        let pos = self.wrap_sub(self.head, distance + 1);
+        self.wrapped_copy_self(pos, self.head+self.la_size, length);            
+
+        self.la_size += length;
+        &self.buf[pos..pos+length]
+    }
+
+    /// Loads a match like [`load_match_into_lookahead()`] but commits the match immediately to the dictionary.
+    /// 
+    /// This invalidates any lookahead currently present.
+    pub fn load_match_into_dictionary(&mut self, distance: usize, length: usize) -> &[u8] {
+        assert!(distance < self.dict_size);
+
+        let pos = self.wrap_sub(self.head, distance + 1);
+        self.wrapped_copy_self(pos, self.head, length);            
+
+        self.clear_lookahead();
+        self.dict_size = cmp::min(self.dict_size + length, self.dict_cap);
+        self.head = self.wrap(self.head + length); 
+
+        &self.buf[pos..pos+length]
+    }
 }
 
 impl io::Write for Dictionary {
@@ -231,6 +283,8 @@ impl io::Write for Dictionary {
         Ok(())
     }
 }
+
+
 
 #[cfg(test)]
 mod test {
@@ -305,14 +359,18 @@ mod test {
         let mut dict = dict!(8, 4);
 
         dict.add_to_lookahead(b"abcd");
-        dict.commit_lookahead_bytes(2);
+        assert_eq!(b"ab", dict.commit_lookahead_bytes(2));
         assert_eq!(2, dict.head);
         assert_eq!(2, dict.dict_size);
         assert_eq!(2, dict.la_size);
+        assert_eq!(b"cd", dict.lookahead());
 
         dict.add_to_lookahead(b"foo");
         assert_eq!(b"abcdfo--abcd", &dict.buf[..]);
         assert_eq!(4, dict.la_size);
+        assert_eq!(b"cdfo", dict.lookahead());
+
+        assert_eq!(b"cdf", dict.commit_lookahead_bytes(3));
     }
 
     #[test]
@@ -377,5 +435,33 @@ mod test {
         dict.add_to_dictionary(b"abcd");
         dict.add_to_lookahead(b"dddd");
         assert_eq!(4, dict.match_length(0));
+    }
+
+    #[test]
+    fn test_load_match() {
+        // Into lookahead
+        let mut dict = dict!(16, 4);
+        dict.add_to_dictionary(b"ban");
+        assert_eq!(b"ana", dict.load_match_into_lookahead(1, 3)); 
+
+        assert_eq!(b"ana", dict.commit_lookahead_bytes(3));
+        let (buf, _) = dict.dictionary();
+        assert_eq!(b"banana", buf);
+
+        let mut dict = dict!(16, 12);
+        dict.add_to_dictionary(b"bad+");
+        assert_eq!(b"ad+ad+ad+ad", dict.load_match_into_lookahead(2, 11));
+
+        let mut dict = dict!(8, 4);
+        dict.add_to_dictionary(b"abcd");
+        assert_eq!(b"dddd", dict.load_match_into_lookahead(0, 4));
+
+        // Into dictionary
+        let mut dict = dict!(16, 4);
+        dict.add_to_dictionary(b"bad+");
+        assert_eq!(b"ad+ad+ad+ad", dict.load_match_into_dictionary(2, 11));
+        assert_eq!(b"bad+ad+ad+ad+ad-bad+", &dict.buf[..]);
+        assert_eq!(0, dict.la_size);
+        assert_eq!(15, dict.dict_size);
     }
 }
