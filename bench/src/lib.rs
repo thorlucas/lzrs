@@ -5,6 +5,8 @@
 //! we reach a lot of iterations of comparison using that buffer. Otherwise, comparing directly
 //! will be nearly the same speed and any difference will be negligable.
 
+use rand::{Fill, self};
+
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
 pub enum MatchType {
@@ -141,7 +143,12 @@ impl Buffer {
         for (q, c) in query.iter().zip(&mut self.buf[self.head..]) {
             *c = *q;
         }
+        self.la_len = Some(query.len());
     }
+}
+
+pub fn fill_rand(buf: &mut[u8]) {
+    buf.try_fill(&mut rand::thread_rng()).unwrap();
 }
 
 #[inline(always)]
@@ -166,58 +173,12 @@ pub fn read_byte_segmented(head: &[u8], tail: &[u8], split: usize, index: usize)
 }
 
 pub fn external_compare(buf: &Buffer, distance: usize, query: &[u8]) -> usize {
-    let mut len = 0;
-    let max_len = query.len();
-
-    println!("External compare");
-    println!("================");
-
-    // First byte from the buffer we start reading at
     let pos = buf.head - distance - 1;
+    let match_buf = &buf.buf[pos..];
     let split = buf.head - pos;
 
-    println!("dist: {}, pos: {}, head: {}", distance, pos, buf.head);
-
-    print!("{:<8}", "BUF:");
-    for i in 0..buf.buf.len() {
-        if i == pos {
-            print!("\x1b[4;1m");
-        } else if i == buf.head {
-            print!("\x1b[2m");
-        }
-        print!("{}", buf.buf[i] as char);
-    }
-    println!("\x1b[0m");
-
-    let match_buf = &buf.buf[pos..];
-
-    print!("{:<1$}", "MAX:", 8 + pos);
-    print!("\x1b[4m");
-    for i in 0..match_buf.len() { 
-        if i == split {
-            print!("\x1b[2m");
-        }
-        print!("{}", match_buf[i] as char);
-    }
-    println!("\x1b[0m");
-
-    print!("{:<1$}", "QUERY:", 8 + buf.head);
-    print!("\x1b[1;32m");
-    for &c in query {
-        print!("{}", c as char);
-    }
-    println!("\x1b[0m");
-
-    print!("{:<1$}", "MAX:", 8 + pos);
-    for i in 0..max_len { 
-        if i == split {
-            print!("\x1b[1;32m");
-        }
-        print!("{}", read_byte_segmented(match_buf, query, split, i) as char);
-    }
-    println!("\x1b[0m");
-
-    println!();
+    let mut len = 0;
+    let max_len = query.len();
 
     while len < max_len {
         if read_byte_segmented(match_buf, query, split, len) == read_byte(query, len) {
@@ -231,15 +192,15 @@ pub fn external_compare(buf: &Buffer, distance: usize, query: &[u8]) -> usize {
 }
 
 pub fn internal_compare(buf: &Buffer, distance: usize) -> usize {
+    let pos = buf.head - distance - 1;
+    let match_buf = &buf.buf[pos..];
+    let split = buf.head - pos;
+
     let mut len = 0;
     let max_len = buf.la_len.unwrap();
 
-    let pos = buf.head - distance - 1;
-    let split = buf.head - pos;
-    let buf = &buf.buf[pos..];
-
     while len < max_len {
-        if read_byte(buf, split + len) == read_byte(buf, len) {
+        if read_byte(match_buf, len) == read_byte(match_buf, len + split) {
             len +=1;
         } else {
             break;
@@ -255,22 +216,13 @@ mod test {
 
     #[test]
     fn test_external() {
-        let query_size = 8;
-        let repeat_len = 4;
-        let match_lens = [8];
+        let query_size = 256;
+        let repeat_len = 32;
+        let match_lens = [64, 128, 192, 256];
 
-        let mut buf = Buffer::new(16);
+        let mut buf = Buffer::new(512);
         buf.head = buf.buf.len() - query_size;
-        let mut acc: usize = 1;
-        for c in &mut buf.buf[..] {
-            let o = acc;
-            acc += 1301;
-            acc %= 65521;
-            acc += acc >> 8 & 0xFF;
-            *c = ((acc % 26) + 97) as u8; 
-        }
-
-        println!("Created buf");
+        fill_rand(&mut buf.buf);
 
         let tests = match_lens.map(|match_len| {
             BufferTest::default()
@@ -278,12 +230,32 @@ mod test {
                 .overlapping_match(repeat_len-1, match_len)
                 .setup(&buf)
         });
-
-        println!("Created tests");
         
         for (dist, len, query) in tests.iter() {
-            println!("Testing dist {}, expecting len {}", dist, len);
             assert_eq!(*len, external_compare(&buf, *dist, query));
+        }
+    }
+
+    #[test]
+    fn test_internal() {
+        let query_size = 256;
+        let repeat_len = 32;
+        let match_lens = [64, 128, 192, 256];
+
+        let mut buf = Buffer::new(512);
+        buf.head = buf.buf.len() - query_size;
+        fill_rand(&mut buf.buf);
+
+        let tests = match_lens.map(|match_len| {
+            BufferTest::default()
+                .query_size(query_size)
+                .overlapping_match(repeat_len-1, match_len)
+                .setup(&buf)
+        });
+        
+        for (dist, len, query) in tests.iter() {
+            buf.copy_la(query);
+            assert_eq!(*len, internal_compare(&buf, *dist));
         }
     }
 }
