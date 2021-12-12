@@ -5,7 +5,19 @@
 //! we reach a lot of iterations of comparison using that buffer. Otherwise, comparing directly
 //! will be nearly the same speed and any difference will be negligable.
 
+pub mod batched;
+
 use rand::{Fill, self};
+
+pub fn rand_buffer(size: usize) -> Box<[u8]> {
+    let mut buf: Box<[u8]> = {
+        let mut v = Vec::with_capacity(size);
+        unsafe { v.set_len(size); }
+        v.into_boxed_slice()
+    };
+    buf.try_fill(&mut rand::thread_rng()).unwrap();
+    buf
+}
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, Debug)]
@@ -22,12 +34,12 @@ pub enum MatchType {
 
 #[derive(Default)]
 #[allow(dead_code)]
-pub struct BufferTest {
+pub struct DictTest {
     query_size: Option<usize>,
     match_type: Option<MatchType>,
 }
 
-impl BufferTest {
+impl DictTest {
     pub fn new() -> Self {
         Default::default()
     }
@@ -61,7 +73,7 @@ impl BufferTest {
         }
     }
 
-    pub fn setup(&self, buffer: &Buffer) -> (usize, usize, Box<[u8]>) {
+    pub fn setup(&self, buffer: &DictBuf) -> (usize, usize, Box<[u8]>) {
         let mut query = {
             let size = self.query_size.unwrap();
             let mut vec: Vec<u8> = Vec::with_capacity(size);
@@ -117,15 +129,13 @@ impl BufferTest {
     }
 }
 
-
-
-pub struct Buffer {
+pub struct DictBuf {
     pub buf: Box<[u8]>,
     pub head: usize,
     pub la_len: Option<usize>,
 }
 
-impl Buffer {
+impl DictBuf {
     /// Create an uninitialized buffer of `size` bytes.
     pub fn new(size: usize) -> Self {
         let mut vec = Vec::with_capacity(size);
@@ -172,7 +182,7 @@ pub fn read_byte_segmented(head: &[u8], tail: &[u8], split: usize, index: usize)
     }
 }
 
-pub fn external_compare(buf: &Buffer, distance: usize, query: &[u8]) -> usize {
+pub fn external_compare(buf: &DictBuf, distance: usize, query: &[u8]) -> usize {
     let pos = buf.head - distance - 1;
     let match_buf = &buf.buf[pos..];
     let split = buf.head - pos;
@@ -191,7 +201,7 @@ pub fn external_compare(buf: &Buffer, distance: usize, query: &[u8]) -> usize {
     len
 }
 
-pub fn internal_compare(buf: &Buffer, distance: usize) -> usize {
+pub fn internal_compare(buf: &DictBuf, distance: usize) -> usize {
     let pos = buf.head - distance - 1;
     let match_buf = &buf.buf[pos..];
     let split = buf.head - pos;
@@ -220,12 +230,12 @@ mod test {
         let repeat_len = 32;
         let match_lens = [64, 128, 192, 256];
 
-        let mut buf = Buffer::new(512);
+        let mut buf = DictBuf::new(512);
         buf.head = buf.buf.len() - query_size;
         fill_rand(&mut buf.buf);
 
         let tests = match_lens.map(|match_len| {
-            BufferTest::default()
+            DictTest::default()
                 .query_size(query_size)
                 .overlapping_match(repeat_len-1, match_len)
                 .setup(&buf)
@@ -242,12 +252,12 @@ mod test {
         let repeat_len = 32;
         let match_lens = [64, 128, 192, 256];
 
-        let mut buf = Buffer::new(512);
+        let mut buf = DictBuf::new(512);
         buf.head = buf.buf.len() - query_size;
         fill_rand(&mut buf.buf);
 
         let tests = match_lens.map(|match_len| {
-            BufferTest::default()
+            DictTest::default()
                 .query_size(query_size)
                 .overlapping_match(repeat_len-1, match_len)
                 .setup(&buf)

@@ -1,3 +1,9 @@
+//! Preliminary benchmarks show that actually direct comparison *is faster* than copy comparison,
+//! meaning it doesn't even make sense to copy lookahead data into the dictionary buffer
+//! beforehand. This means we are free to have the dictionary structure simply be a regular ring
+//! buffer. In this case, it makes more sense to have a general `Dictionary` trait, which can be
+//! implemented any way. Then, we provide a `RingBuffer` struct.
+
 use std::{cmp, io};
 
 /// A dictionary which is used for conducting searches. A lookahead can be loaded into the
@@ -283,8 +289,6 @@ impl io::Write for Dictionary {
         Ok(())
     }
 }
-
-
 
 #[cfg(test)]
 mod test {
