@@ -1,6 +1,5 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
-use bench::{DictBuf, external_compare, internal_compare, DictTest, rand_buffer};
-use rand::{thread_rng, Fill};
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId, Throughput};
+use bench::{DictBuf, external_compare, internal_compare, DictTest};
 
 /// Benchmarks a single query with the copy time not included
 /// This measures the raw comparison speed
