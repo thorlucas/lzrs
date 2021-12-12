@@ -20,7 +20,7 @@ pub fn buf_benchmark_single_query(c: &mut Criterion) {
     });
 
     let mut group = c.benchmark_group("direct_compare");
-    for (len, dist, query) in tests.iter() {
+    for (dist, len, query) in tests.iter() {
         group.throughput(Throughput::Bytes(*len as u64));
         group.bench_with_input(BenchmarkId::from_parameter(len), dist, |b, dist: &usize| {
             b.iter(|| {
@@ -31,7 +31,7 @@ pub fn buf_benchmark_single_query(c: &mut Criterion) {
     group.finish();
 
     let mut group = c.benchmark_group("copy_compare");
-    for (len, dist, query) in tests.iter() {
+    for (dist, len, query) in tests.iter() {
         buf.copy_la(query);
         group.throughput(Throughput::Bytes(*len as u64));
         group.bench_with_input(BenchmarkId::from_parameter(len), dist, |b, dist: &usize| {
