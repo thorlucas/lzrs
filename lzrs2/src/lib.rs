@@ -1,6 +1,6 @@
 pub mod core;
-#[allow(dead_code)]
-mod dict;
+pub mod dict;
+pub mod buffer;
 
 #[cfg(test)]
 mod tests {
