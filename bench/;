@@ -11,21 +11,10 @@ pub fn read_u64_non_inline(buf: &[u8], index: usize) -> u64 {
 
 
 #[inline(always)]
-pub fn read_u64_unsafe_inline(buf: &[u8], index: usize) -> u64 {
-    let ptr: *const [u8] = &buf[index..index+8];
+pub fn read_u64_cast_inline(buf: &[u8], index: usize) -> u64 {
+    let ptr: *const [u8; 8] = &buf[index..index+8];
     let ptr: *const u64 = ptr as *const u64;
-    unsafe { *ptr }
-}
-
-#[cfg(test)]
-#[test]
-pub fn test_read_u64_unsafe() {
-    let bytes: &[u8; 8] = b"foo&bar!";
-    let le = u64::from_le_bytes(*bytes);
-    let be = u64::from_be_bytes(*bytes);
-
-    let read = read_u64_unsafe_inline(bytes, 0);
-    assert!(be == read || le == read);
+    
 }
 
 
