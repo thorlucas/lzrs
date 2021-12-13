@@ -1,5 +1,10 @@
+#[allow(dead_code)]
 pub mod core;
+
+#[allow(dead_code)]
 pub mod dict;
+
+#[allow(dead_code)]
 pub mod buffer;
 
 #[cfg(test)]

@@ -3,5 +3,13 @@ name = "lzrs2"
 version = "0.1.0"
 edition = "2021"
 
+[[bench]]
+name = "fastcmp"
+harness = false
+
 [dependencies]
+
+[dev-dependencies]
 anyhow = "1.0.51"
+criterion = "0.3.5"
+rand = "0.8.4"

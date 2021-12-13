@@ -311,6 +311,8 @@ name = "lzrs2"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "criterion",
+ "rand",
 ]
 
 [[package]]
