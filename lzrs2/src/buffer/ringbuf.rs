@@ -1,11 +1,31 @@
-use std::{cmp, io, ops};
+use std::{cmp, io};
 
-use super::{Distance, Buffer, ReadU64};
+use super::prelude::*;
 
 pub struct RingBuf {
+    /// The buffer.
     buf: Box<[u8]>,
+
+    /// The index in the buffer of the next byte to be written, behind which `len` bytes are valid.
     head: usize,
+
+    /// The filled length of the buffer.
     len: usize,
+
+    /// The total number of bytes ever written into the buffer.
+    n: usize,
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub struct Index {
+    /// The actual index in the array if still valid.
+    i: usize,
+
+    /// The total position that this byte was written into the buffer. The first byte ever written
+    /// would have 0, the next 1, and so on. This allows us to calculate whether or not the index
+    /// is still valid; if the ring buffer has length `N` then if `N` or more bytes have been written after
+    /// this, it is no longer valid.
+    n: usize,
 }
 
 impl RingBuf {
@@ -25,6 +45,7 @@ impl RingBuf {
             },
             head: 0,
             len: 0,
+            n: 0,
         }
     }
 
@@ -68,14 +89,9 @@ impl RingBuf {
         }
     }
 
-    #[inline]
-    fn tail(&self) -> usize {
-        self.wrap_offset_signed(-(self.len as isize))
-    }
-
     /// Returns slices such that the first slice is the oldest written data and the second slice is
     /// the newest data (at the head).
-    pub fn as_slices(&self) -> (&[u8], &[u8]) {
+    fn as_slices(&self) -> (&[u8], &[u8]) {
         let (head, tail) = self.buf.split_at(self.head);
 
         // Only `self.len` bytes behind the head are valid.
@@ -104,7 +120,7 @@ impl io::Write for RingBuf {
 
             // copy chunks 8 bytes at a time
             for i in (0..chunk_bytes).step_by(8) {
-                self.write_u64_unchecked(buf.read_u64_unchecked(i), self.head + i);
+                self.write_u64_unchecked(read_u64(buf, i), self.head + i);
             }
 
             // copy the remaining bytes
@@ -117,45 +133,12 @@ impl io::Write for RingBuf {
         }
 
         self.len = cmp::min(self.len + len, self.buf.len());
+        self.n += len;
         Ok(len)
     }
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
-    }
-}
-
-/* I'm commenting this out for now because it doesn't conceptually make much sense to address a
- * ring buffer from the tail, since with a ring buffer of this type you only care about the head.
- * Similarly, it therefore wouldn't implement ReadU64 and WriteU64 since those are defined from the
- * front.
- *
- * impl ops::Index<usize> for RingBuf {
- *     type Output = u8;
- * 
- *     fn index(&self, index: usize) -> &Self::Output {
- *         assert!(
- *             index < self.len,
- *             "index out of bounds: the len is {} but the index is {}",
- *             self.len,
- *             index
- *         );
- *         &self.buf[self.wrap(self.tail() + index)]
- *     }
- * }
-*/
-
-impl ops::Index<Distance> for RingBuf {
-    type Output = u8;
-
-    fn index(&self, index: Distance) -> &Self::Output {
-        assert!(
-            index.0 < self.len,
-            "index out of bounds: the len is {} but the index is {:?}",
-            self.len,
-            index
-        );
-        &self.buf[self.wrap_offset_signed(-(index.0 as isize + 1))]
     }
 }
 
@@ -227,4 +210,3 @@ mod tests {
         Ok(())
     }
 }
-
