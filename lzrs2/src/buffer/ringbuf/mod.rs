@@ -27,12 +27,12 @@ pub struct RingBuf {
     mask: usize,
 }
 
-impl RingBuf {
+impl Buffer for RingBuf {
     /// Creates a buffer with the capacity of *at least* this many bytes.
     ///
     /// The actual capacity may be greater. It will round up to the nearest power of two for
     /// efficiency purposes.
-    pub fn with_capacity(capacity: usize) -> Self {
+    fn with_capacity(capacity: usize) -> Self {
         let capacity = capacity.next_power_of_two();
         Self {
             buf: {
@@ -48,7 +48,9 @@ impl RingBuf {
             mask: capacity - 1,
         }
     }
+}
 
+impl RingBuf {
     /// Reads 8 bytes in little endian order at `index`. Panics if there `index..index+8` is out
     /// of bounds.
     #[inline(always)]

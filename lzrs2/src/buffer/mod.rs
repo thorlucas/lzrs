@@ -11,8 +11,12 @@ pub mod prelude {
 }
 
 pub trait Buffer: ops::Index<usize> {
+    fn with_capacity(capacity: usize) -> Self;
+
+    /*
     fn get(&self, index: usize) -> Option<&u8>;
     unsafe fn get_unchecked(&self, index: usize) -> *const u8;
+    */
 }
 
 /// See [`std::slice::SliceIndex`].

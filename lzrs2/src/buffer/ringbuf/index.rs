@@ -1,6 +1,7 @@
 use super::*;
 
-impl Buffer for RingBuf {
+/*
+impl IndexBuffer for RingBuf {
     #[inline]
     fn get(&self, index: usize) -> Option<&u8> {
         // TODO: We're assuming here the buffer length never shrinks!
@@ -16,7 +17,9 @@ impl Buffer for RingBuf {
         self.buf.get_unchecked(self.wrap(index))
     }
 }
+*/
 
+/*
 impl ops::Index<usize> for RingBuf {
     type Output = u8;
 
@@ -30,6 +33,7 @@ impl ops::Index<usize> for RingBuf {
             .expect(&format!("Index {} out of bounds.", index))
     }
 }
+*/
 
 // We have a bit of a problem here... so let's leave this out for now.
 /*
