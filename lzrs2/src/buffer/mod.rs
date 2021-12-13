@@ -16,7 +16,7 @@ pub trait Buffer: ops::Index<usize> {
 }
 
 /// See [`std::slice::SliceIndex`].
-pub unsafe trait BufSliceIndex<T: ?Sized> {
+pub unsafe trait SliceIndex<T: ?Sized> {
     type Output: ?Sized;
 
     fn get(self, slice: &T) -> Option<&Self::Output>;
