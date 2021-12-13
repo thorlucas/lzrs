@@ -21,6 +21,8 @@ pub trait FastCmp<T> {
 	fn match_length(&self, other: T) -> usize;
 }
 
+pub trait Buffer {}
+
 impl<T: AsRef<[u8]> + ?Sized> ReadU64 for &T {
     #[inline(always)]
     fn read_u64_unchecked(&self, index: usize) -> u64 {
@@ -39,16 +41,16 @@ impl<T: AsMut<[u8]> + ?Sized> WriteU64 for &mut T {
     }
 }
 
-impl<S, T> FastCmp<&T> for S
+impl<S, T> FastCmp<T> for S
     where
         S: AsRef<[u8]> + ?Sized,
-        T: AsRef<[u8]> + ?Sized,
+        T: AsRef<[u8]>,
 {
-    fn match_length(&self, other: &T) -> usize {
+    fn match_length(&self, other: T) -> usize {
         let other = other.as_ref();
-        let buf = self.as_ref();
+        let this = self.as_ref();
 
-        let max_len = cmp::min(buf.len(), other.len());
+        let max_len = cmp::min(this.len(), other.len());
         let mut len = 0;
 
         // floor(ahead/8)*8
@@ -65,7 +67,7 @@ impl<S, T> FastCmp<&T> for S
 
         // compare 1 byte at a time
         while len < max_len {
-            if buf[len] == other[len] {
+            if this[len] == other[len] {
                 len += 1;
             } else {
                 break;
@@ -249,6 +251,8 @@ impl ops::Index<Distance> for RingBuf {
     }
 }
 
+impl Buffer for RingBuf {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,6 +316,12 @@ mod tests {
         assert_eq!(3, b"abc".match_length(b"abcdefg_012"));
         assert_eq!(3, b"abc".match_length(b"abc"));
         assert_eq!(0, b"abc".match_length(b""));
-        assert_eq!(0, b"".match_length(b""));
+        assert_eq!(0, b"abc".match_length(b""));
+        
+        let slice: &[u8] = b"abcd";
+        let array: &[u8; 4] = b"asdf";
+        array.match_length(slice);
+        slice.match_length(array);
+        slice.match_length(*array);
     }
 }
