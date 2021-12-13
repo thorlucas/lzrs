@@ -1,7 +1,12 @@
-use std::{cmp, io};
+//! Provides a circular buffer implementation and trait implementations for related structures.
 
-use super::prelude::*;
+use std::{cmp, io, ops};
 
+use super::{prelude::*, BufferIndex};
+
+/// A circular buffer with a specific capacity. Once the capacity is reached, the buffer will start
+/// overwriting itself. However, the safety of our index methods ensure that you can never
+/// accidentally get data that has been overwritten.
 pub struct RingBuf {
     /// The buffer.
     buf: Box<[u8]>,
@@ -13,18 +18,6 @@ pub struct RingBuf {
     len: usize,
 
     /// The total number of bytes ever written into the buffer.
-    n: usize,
-}
-
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub struct Index {
-    /// The actual index in the array if still valid.
-    i: usize,
-
-    /// The total position that this byte was written into the buffer. The first byte ever written
-    /// would have 0, the next 1, and so on. This allows us to calculate whether or not the index
-    /// is still valid; if the ring buffer has length `N` then if `N` or more bytes have been written after
-    /// this, it is no longer valid.
     n: usize,
 }
 
@@ -109,6 +102,7 @@ impl RingBuf {
 }
 
 impl io::Write for RingBuf {
+    /// Writes all of the data into the buffer, overwriting itself as it goes along.
     fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
         let len = buf.len();
 
@@ -144,11 +138,49 @@ impl io::Write for RingBuf {
 
 impl Buffer for RingBuf {}
 
+/// Indexing a [`RingBuf`] with a `usize` is defined as indexing **from the first byte ever
+/// written**. In other words, the index for each new added byte will increment forever. This
+/// implementation ensures that we safely differentiate between data that has been overwritten.
+unsafe impl BufferIndex<RingBuf> for usize {
+    type Output = u8;
+
+    #[inline]
+    fn get(self, buffer: &RingBuf) -> Option<&Self::Output> {
+        if self >= buffer.n || self + buffer.buf.len() < buffer.n {
+            None
+        } else {
+            Some(&buffer.buf[buffer.wrap(self)])
+        }
+    }
+
+    #[inline]
+    unsafe fn get_unchecked(self, buffer: &RingBuf) -> *const Self::Output {
+        &buffer.buf[buffer.wrap(self)]
+    }
+
+    #[inline]
+    fn index(self, buffer: &RingBuf) -> &Self::Output {
+        self.get(buffer)
+            .expect(&format!("index {} out of bounds for buffer.", self))
+    }
+}
+
+impl<Idx> ops::Index<Idx> for RingBuf
+where
+    Idx: BufferIndex<RingBuf>,
+{
+    type Output = <Idx as BufferIndex<RingBuf>>::Output;
+
+    fn index(&self, index: Idx) -> &Self::Output {
+        index.index(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use anyhow::Result;
-    use std::io::Write;
+    use std::{io::Write, ops::Index};
 
     macro_rules! p {
 		($($t:tt)*) => {
@@ -208,5 +240,46 @@ mod tests {
         test!((b"ab", b"cdef"), rb);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_index() -> Result<()> {
+        rb! { rb[4] };
+
+        rb.write_all(b"abc")?;
+        // abc-
+        assert_eq!(b'a', *rb.index(0));
+        assert_eq!(b'b', rb[1]);
+        assert_eq!(Some(&b'c'), rb.get(2));
+        assert_eq!(None, rb.get(3));
+        assert_eq!(b'b', unsafe { *rb.get_unchecked(1) });
+
+        rb.write_all(b"foo")?;
+        // oocf
+        assert_eq!(None, rb.get(0));
+        assert_eq!(None, rb.get(1));
+        assert_eq!(b'c', rb[2]);
+        assert_eq!(b'f', rb[3]);
+        assert_eq!(b'o', rb[4]);
+        assert_eq!(b'o', rb[5]);
+        assert_eq!(None, rb.get(6));
+
+        Ok(())
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_panic_out_of_bounds() {
+        rb! { rb[4] };
+        rb.write_all(b"abc").unwrap();
+        rb[3];
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_index_panic_overwritten() {
+        rb! { rb[4] };
+        rb.write_all(b"abcfoo").unwrap();
+        rb[1];
     }
 }

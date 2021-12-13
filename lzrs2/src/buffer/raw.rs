@@ -5,6 +5,7 @@ use std::cmp;
 /// Reads 8 bytes from a buffer into a a [`u64`] in **little endian order**. Panics on out of
 /// bounds.
 #[track_caller]
+#[inline(always)]
 pub fn read_u64(buf: &[u8], index: usize) -> u64 {
     u64::from_le_bytes(buf[index..index + 8].try_into().unwrap())
 }
@@ -12,6 +13,7 @@ pub fn read_u64(buf: &[u8], index: usize) -> u64 {
 /// Writes 8 bytes into a buffer into a a [`u64`] in **little endian order**. Panics on out of
 /// bounds.
 #[track_caller]
+#[inline(always)]
 pub fn write_u64(buf: &mut [u8], index: usize, src: u64) {
     buf[index..index + 8].copy_from_slice(&u64::to_le_bytes(src));
 }
